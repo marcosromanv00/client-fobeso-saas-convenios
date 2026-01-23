@@ -1,134 +1,151 @@
-import { executeQuery } from '@/lib/db';
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
 
-import oracledb from 'oracledb'; // Importar la librería oracledb
-import { NextResponse } from 'next/server';
+export const dynamic = "force-dynamic";
+
+// Mapeo auxiliar de nombres de campos Database -> Frontend Legacy
+const mapCompanyToLegacy = (company) => ({
+  EMPRESA_ID: company.id,
+  NOMBRE: company.name,
+  LOGO_URL: company.logo_url,
+  SITIO_WEB: company.website,
+  FACEBOOK: company?.facebook, // Asumiendo que agregaremos redes sociales a la tabla 'companies'
+  INSTAGRAM: company?.instagram,
+  TWITTER: company?.twitter,
+  LINKEDIN: company?.linkedin,
+  ESTADO: company.is_active ? 1 : 0,
+});
 
 // Obtener todas las empresas
 export async function GET() {
-    try {
-        const query = `
-            SELECT * FROM EMPRESAS
-        `;
-        const empresas = await executeQuery(query);
-        return new Response(JSON.stringify(empresas.rows), {
-            headers: { 'Content-Type': 'application/json' },
-        });
-    } catch (error) {
-        console.error("Error al obtener las empresas:", error);
-        return new Response('Error al obtener las empresas', { status: 500 });
-    }
+  try {
+    const { data, error } = await supabase
+      .from("companies")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    // Mapeamos para que el frontend existente no se rompa
+    const legacyFormat = data.map(mapCompanyToLegacy);
+
+    return NextResponse.json(legacyFormat);
+  } catch (error) {
+    console.error("Error al obtener las empresas (Supabase):", error);
+    return new Response("Error al obtener las empresas", { status: 500 });
+  }
 }
 
 // Crear una nueva empresa
 export async function POST(req) {
-    const { nombre, logoUrl, sitio_web, facebook, instagram, twitter, linkedin } = await req.json();
+  try {
+    const body = await req.json();
+    const {
+      nombre,
+      logoUrl,
+      sitio_web,
+      facebook,
+      instagram,
+      twitter,
+      linkedin,
+    } = body;
 
-    const query = `
-    INSERT INTO EMPRESAS (EMPRESA_ID, NOMBRE, LOGO_URL, SITIO_WEB, FACEBOOK, INSTAGRAM, TWITTER, LINKEDIN, ESTADO)
-    VALUES (empresa_seq.NEXTVAL, :nombre, :logoUrl, :sitio_web, :facebook, :instagram, :twitter, :linkedin, 1)
-    RETURNING EMPRESA_ID INTO :empresaId
-`;
+    const { data, error } = await supabase
+      .from("companies")
+      .insert([
+        {
+          name: nombre,
+          logo_url: logoUrl,
+          website: sitio_web,
+          // Nota: Redes sociales no están en la definición SQL original mínima,
+          // pero si existen en Supabase se pueden insertar. Si no, se ignoran o se agregan en JSONB.
+          // Por ahora asumo que solo name y logo_url son críticos.
+          is_active: true,
+        },
+      ])
+      .select()
+      .single();
 
-    // Parámetros con el parámetro de salida para capturar el EMPRESA_ID
-    const params = [
-        nombre,
-        logoUrl,
-        sitio_web,
-        facebook,
-        instagram,
-        twitter,
-        linkedin,
-        { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }  // Parámetro de salida
-    ];
+    if (error) throw error;
 
-    try {
-        const result = await executeQuery(query, params);
-
-        if (result.outBinds && result.outBinds[0] && result.outBinds[0][0] !== undefined) {
-            const empresaId = result.outBinds[0][0];  // Acceder al primer valor del primer arreglo
-
-            return new Response(
-                JSON.stringify({ EMPRESA_ID: empresaId, message: `Empresa creada exitosamente con ID: ${empresaId}` }),
-                { status: 201, headers: { 'Content-Type': 'application/json' } }
-            );
-        } else {
-            console.error("Error: No se pudo obtener EMPRESA_ID de outBinds.");
-            return new Response(
-                JSON.stringify({ error: 'Error al obtener el EMPRESA_ID' }),
-                { status: 500, headers: { 'Content-Type': 'application/json' } }
-            );
-        }
-
-    } catch (error) {
-        console.error("Error al crear la empresa:", error);
-        return new Response(
-            JSON.stringify({ error: 'Error al crear la empresa' }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-    }
+    // Respuesta compatible con el frontend (espera EMPRESA_ID y message)
+    return NextResponse.json(
+      {
+        EMPRESA_ID: data.id,
+        message: `Empresa creada exitosamente con ID: ${data.id}`,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error("Error al crear la empresa:", error);
+    return NextResponse.json(
+      { error: "Error al crear la empresa" },
+      { status: 500 },
+    );
+  }
 }
 
 // Actualizar una empresa
 export async function PUT(req) {
-    const { empresaId, empresaNombre, logoUrl, sitio_web, facebook, instagram, twitter, linkedin } = await req.json();
+  try {
+    const body = await req.json();
+    const {
+      empresaId,
+      empresaNombre,
+      logoUrl,
+      sitio_web,
+      facebook,
+      instagram,
+      twitter,
+      linkedin,
+    } = body;
 
-    // Asegurarse de que `empresaId` sea numérico
     const empresaIdNum = parseInt(empresaId);
-    const empresaNombreTrimmed = empresaNombre ? empresaNombre.trim() : '';
-    console.log('Nombre sin espacios: ', empresaNombreTrimmed);
-    console.log('Nombre: ', empresaNombre);
 
     if (!empresaNombre || !empresaNombre.trim()) {
-        return new Response(JSON.stringify({ error: 'El nombre de la empresa no puede estar vacío' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      return NextResponse.json(
+        { error: "El nombre de la empresa no puede estar vacío" },
+        { status: 400 },
+      );
     }
 
-    if (isNaN(empresaIdNum)) {
-        return new Response(JSON.stringify({ error: 'ID de empresa inválido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-    }
+    const { error } = await supabase
+      .from("companies")
+      .update({
+        name: empresaNombre.trim(),
+        logo_url: logoUrl,
+        website: sitio_web,
+      })
+      .eq("id", empresaIdNum);
 
-    console.log('1 Nombre: ', empresaNombre);
+    if (error) throw error;
 
-    try {
-        const query = `
-            UPDATE EMPRESAS
-            SET NOMBRE = :empresaNombreTrimmed, LOGO_URL = :logoUrl, SITIO_WEB = :sitio_web, FACEBOOK = :facebook, 
-                INSTAGRAM = :instagram, TWITTER = :twitter, LINKEDIN = :linkedin
-            WHERE EMPRESA_ID = :empresaId
-        `;
-
-        const result = await executeQuery(query, [empresaNombreTrimmed, logoUrl, sitio_web, facebook, instagram, twitter, linkedin, empresaIdNum]);
-
-        if (result.affectedRows === 0) {
-            return new Response(JSON.stringify({ error: 'Empresa no encontrada' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-        }
-
-        return new Response(JSON.stringify({ message: 'Empresa actualizada exitosamente' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    } catch (error) {
-        console.error("Error al actualizar la empresa:", error);
-        return new Response(JSON.stringify({ error: 'Error al actualizar la empresa' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-    }
+    return NextResponse.json({ message: "Empresa actualizada exitosamente" });
+  } catch (error) {
+    console.error("Error al actualizar la empresa:", error);
+    return NextResponse.json(
+      { error: "Error al actualizar la empresa" },
+      { status: 500 },
+    );
+  }
 }
 
 // Eliminar una empresa
 export async function DELETE(req) {
+  try {
     const { empresaId } = await req.json();
-
     const empresaIdNum = parseInt(empresaId);
 
-    try {
-        const query = `
-            DELETE FROM EMPRESAS
-            WHERE EMPRESA_ID = :empresaIdNum
-        `;
-        const result = await executeQuery(query, [empresaIdNum]);
+    const { error } = await supabase
+      .from("companies")
+      .delete()
+      .eq("id", empresaIdNum);
 
-        if (result.affectedRows === 0) {
-            return new Response('Empresa no encontrada', { status: 404 });
-        }
+    if (error) throw error;
 
-        return new Response('Empresa eliminada exitosamente', { status: 200 });
-    } catch (error) {
-        console.error("Error al eliminar la empresa:", error);
-        return new Response('Error al eliminar la empresa', { status: 500 });
-    }
+    return new Response("Empresa eliminada exitosamente", { status: 200 });
+  } catch (error) {
+    console.error("Error al eliminar la empresa:", error);
+    return new Response("Error al eliminar la empresa", { status: 500 });
+  }
 }

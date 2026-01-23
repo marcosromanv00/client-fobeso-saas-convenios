@@ -1,102 +1,147 @@
-import { executeQuery } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
 
-// Obtener todos los convenios
+export const dynamic = "force-dynamic";
+
+// Mapeo auxiliar de nombres de campos Database -> Frontend Legacy
+const mapDealToLegacy = (deal) => ({
+  CONVENIO_ID: deal.id,
+  EMPRESA_ID: deal.company_id,
+  CATEGORIA_ID: deal.category_id,
+  TITULO: deal.title,
+  CONDICIONES: deal.conditions,
+  FECHA_INICIO: deal.start_date,
+  FECHA_FIN: deal.end_date,
+  ESTADO: deal.is_active ? 1 : 0,
+  // Agregamos campos extra si el frontend los usa para mostrar nombres
+  NOMBRE_EMPRESA: deal.companies?.name,
+  NOMBRE_CATEGORIA: deal.categories?.name,
+});
+
+// Obtener todos los convenios (Admin)
 export async function GET() {
-    try {
-        const query = `
-            SELECT * FROM CONVENIOS
-        `;
-        const convenios = await executeQuery(query);
-        return new Response(JSON.stringify(convenios.rows), {
-            headers: { 'Content-Type': 'application/json' },
-        });
-    } catch (error) {
-        console.error("Error al obtener los convenios:", error);
-        return new Response('Error al obtener los convenios', { status: 500 });
-    }
+  try {
+    const { data, error } = await supabase
+      .from("deals")
+      .select(
+        `
+                *,
+                companies (name),
+                categories (name)
+            `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    // Mapeamos para que el frontend existente no se rompa
+    const legacyFormat = data.map(mapDealToLegacy);
+
+    return NextResponse.json(legacyFormat);
+  } catch (error) {
+    console.error("Error al obtener convenios (Supabase):", error);
+    return new Response("Error al obtener los convenios", { status: 500 });
+  }
 }
 
 // Crear un nuevo convenio
 export async function POST(req) {
-    const { empresaId, categoriaId, titulo, fechaInicio, fechaFin, condiciones } = await req.json();
+  try {
+    const body = await req.json();
+    const {
+      empresaId,
+      categoriaId,
+      titulo,
+      fechaInicio,
+      fechaFin,
+      condiciones,
+    } = body;
 
-    // Asegurar que las fechas estén en el formato 'YYYY-MM-DD'
-    const fechaInicioISO = new Date(fechaInicio).toISOString().split('T')[0];
-    const fechaFinISO = new Date(fechaFin).toISOString().split('T')[0];
-
-    try {
-        const query = `
-            INSERT INTO CONVENIOS (CONVENIO_ID, EMPRESA_ID, CATEGORIA_ID, TITULO, FECHA_INICIO, FECHA_FIN, CONDICIONES, ESTADO)
-            VALUES (convenio_seq.NEXTVAL, :empresaiD, :categoriaId, :titulo, TO_DATE(:fechaInicio, 'YYYY-MM-DD'), TO_DATE(:fechaFin, 'YYYY-MM-DD'), :condiciones, 1)
-        `;
-        await executeQuery(query, [empresaId, categoriaId, titulo, fechaInicioISO, fechaFinISO, condiciones]);
-
-        // Devolvemos una respuesta correctamente formateada
-        return new Response(
-            JSON.stringify({ message: 'Convenio creado exitosamente' }),
-            { status: 201, headers: { 'Content-Type': 'application/json' } }
-        );
-    } catch (error) {
-        console.error("Error al crear el convenio:", error);
-        return new Response('Error al crear el convenio', { status: 500 });
+    // Validación básica
+    if (!empresaId || !titulo) {
+      return new Response("Faltan datos requeridos", { status: 400 });
     }
+
+    const { data, error } = await supabase
+      .from("deals")
+      .insert([
+        {
+          company_id: parseInt(empresaId),
+          category_id: parseInt(categoriaId),
+          title: titulo,
+          conditions: condiciones,
+          start_date: fechaInicio, // Supabase acepta strings ISO o YYYY-MM-DD
+          end_date: fechaFin,
+          is_active: true,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ message: "Convenio creado exitosamente", data });
+  } catch (error) {
+    console.error("Error al crear convenio:", error);
+    return new Response("Error al crear el convenio", { status: 500 });
+  }
 }
 
 // Actualizar un convenio
 export async function PUT(req) {
-    const { empresaId, categoriaId, titulo, fechaInicio, fechaFin, condiciones } = await req.json();
+  try {
+    const body = await req.json();
+    // PRECAUCIÓN: El frontend actual envía "empresaId" como el ID del registro a editar según el código legacy auditado.
+    // En el código original: WHERE CONVENIO_ID = :empresaIdNum (Línea 63 del original).
+    // Esto confirma que el frontend llama "empresaId" al ID del convenio en el PUT. Mantendremos esa lógica confusa pero funcional.
+    const {
+      empresaId,
+      categoriaId,
+      titulo,
+      fechaInicio,
+      fechaFin,
+      condiciones,
+    } = body;
 
-    // Asegurarse de que `empresaId` sea numérico
-    const empresaIdNum = parseInt(empresaId);
-    const categoriaIdNum = parseInt(categoriaId);
+    const dealId = parseInt(empresaId); // ID del convenio realmente
 
-    const formattedFechaInicio = fechaInicio.split('T')[0]; // Extraer la parte 'YYYY-MM-DD'
-    const formattedFechaFin = fechaFin.split('T')[0];
+    const { error } = await supabase
+      .from("deals")
+      .update({
+        category_id: parseInt(categoriaId),
+        title: titulo,
+        conditions: condiciones,
+        start_date: fechaInicio,
+        end_date: fechaFin,
+      })
+      .eq("id", dealId);
 
-    try {
-        const query = `
-            UPDATE CONVENIOS
-            SET CATEGORIA_ID = :categoriaIdNum, TITULO = :titulo, 
-                FECHA_INICIO = TO_DATE(:formattedFechaInicio, 'YYYY-MM-DD'), FECHA_FIN = TO_DATE(:formattedFechaFin, 'YYYY-MM-DD'), 
-                CONDICIONES = :condiciones
-            WHERE CONVENIO_ID = :empresaIdNum
-        `;
+    if (error) throw error;
 
-        // Asegúrate de incluir todos los valores posicionales en este array
-        const result = await executeQuery(query, [categoriaIdNum, titulo, formattedFechaInicio, formattedFechaFin, condiciones, empresaIdNum]);
-
-        if (result.affectedRows === 0) {
-            return NextResponse.json({ message: 'Convenio no encontrado' }, { status: 404 });
-        }
-
-        return NextResponse.json({ message: 'Convenio actualizado exitosamente' }, { status: 200 });
-    } catch (error) {
-        console.error("Error al actualizar el convenio:", error);
-        return NextResponse.json({ message: 'Error al actualizar el convenio', error: error.message }, { status: 500 });
-    }
+    return NextResponse.json({ message: "Convenio actualizado exitosamente" });
+  } catch (error) {
+    console.error("Error al actualizar convenio:", error);
+    return NextResponse.json(
+      { message: "Error al actualizar el convenio", error: error.message },
+      { status: 500 },
+    );
+  }
 }
 
 // Eliminar un convenio
 export async function DELETE(req) {
-    const { empresaId } = await req.json();
+  try {
+    const { empresaId } = await req.json(); // Nuevamente, el frontend manda el ID bajo la prop empresaId
+    const dealId = parseInt(empresaId);
 
-    const empresaIdNum = parseInt(empresaId);
+    // FIX CRÍTICO: Borramos por ID de convenio, no por ID de empresa.
+    const { error } = await supabase.from("deals").delete().eq("id", dealId);
 
-    try {
-        const query = `
-            DELETE FROM CONVENIOS
-            WHERE EMPRESA_ID = :empresaIdNum
-        `;
-        const result = await executeQuery(query, [empresaIdNum]);
+    if (error) throw error;
 
-        if (result.affectedRows === 0) {
-            return new Response('Convenio no encontrado', { status: 404 });
-        }
-
-        return new Response('Convenio eliminado exitosamente', { status: 200 });
-    } catch (error) {
-        console.error("Error al eliminar el convenio:", error);
-        return new Response('Error al eliminar el convenio', { status: 500 });
-    }
+    return new Response("Convenio eliminado exitosamente", { status: 200 });
+  } catch (error) {
+    console.error("Error al eliminar convenio:", error);
+    return new Response("Error al eliminar el convenio", { status: 500 });
+  }
 }

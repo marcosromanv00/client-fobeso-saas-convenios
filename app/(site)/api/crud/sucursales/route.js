@@ -1,96 +1,118 @@
-import { executeQuery } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+
+const mapBranchToLegacy = (branch) => ({
+  SUCURSAL_ID: branch.id,
+  EMPRESA_ID: branch.company_id,
+  DIRECCION: branch.address,
+  TELEFONO: branch.phone,
+  CIUDAD: branch.city,
+  CORREO_CONTACTO: branch.contact_email, // Campo nuevo si la tabla branches no lo tiene, se ignora
+  ESTADO: 1,
+});
 
 // Obtener todas las sucursales
 export async function GET() {
-    try {
-        const query = `
-      SELECT * FROM SUCURSALES
-    `;
-        const sucursales = await executeQuery(query);
-        return new Response(JSON.stringify(sucursales.rows), {
-            headers: { 'Content-Type': 'application/json' },
-        });
-    } catch (error) {
-        console.error("Error al obtener las sucursales:", error);
-        return new Response('Error al obtener las sucursales', { status: 500 });
-    }
+  try {
+    const { data, error } = await supabase
+      .from("branches")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const legacyFormat = data.map(mapBranchToLegacy);
+
+    return NextResponse.json(legacyFormat);
+  } catch (error) {
+    console.error("Error al obtener las sucursales:", error);
+    return new Response("Error al obtener las sucursales", { status: 500 });
+  }
 }
 
 // Crear una nueva sucursal
 export async function POST(req) {
-    const { empresaId, direccion, telefono, correoContacto, ciudad } = await req.json();
+  const { empresaId, direccion, telefono, correoContacto, ciudad } =
+    await req.json();
 
-    try {
-        const query = `
-            INSERT INTO SUCURSALES (SUCURSAL_ID, EMPRESA_ID, DIRECCION, TELEFONO, CORREO_CONTACTO, CIUDAD, ESTADO)
-            VALUES (sucursal_seq.NEXTVAL, :empresaiD, :direccion, :telefono, :correoContacto, :ciudad, 1)
-        `;
-        const result = await executeQuery(query, [empresaId, direccion, telefono, correoContacto, ciudad]);
-        console.log("Resultado de la consulta:", result);
+  try {
+    const { data, error } = await supabase
+      .from("branches")
+      .insert([
+        {
+          company_id: parseInt(empresaId),
+          address: direccion,
+          phone: telefono,
+          city: ciudad,
+          // contact_email: correoContacto // Habilitar si la tabla branches tiene email
+        },
+      ])
+      .select()
+      .single();
 
-        // Responder con un JSON en vez de un texto plano
-        return new Response(
-            JSON.stringify({ message: 'Sucursal creada exitosamente' }),
-            { status: 201, headers: { 'Content-Type': 'application/json' } }
-        );
-    } catch (error) {
-        console.error("Error al crear la sucursal:", error);
-        return new Response(
-            JSON.stringify({ message: 'Error al crear la sucursal' }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-    }
+    if (error) throw error;
+
+    return NextResponse.json(
+      { message: "Sucursal creada exitosamente" },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error("Error al crear la sucursal:", error);
+    return NextResponse.json(
+      { message: "Error al crear la sucursal" },
+      { status: 500 },
+    );
+  }
 }
 
 // Actualizar una sucursal
 export async function PUT(req) {
-    const { empresaId, direccion, telefono, correoContacto, ciudad } = await req.json();
+  const { empresaId, direccion, telefono, correoContacto, ciudad } =
+    await req.json();
+  // NOTA FRONTEND: Al igual que en convenios, el frontend manda el ID de la sucursal en "empresaId" para el PUT/DELETE
+  const sucursalId = parseInt(empresaId);
 
-    const empresaIdNum = parseInt(empresaId);
+  try {
+    const { error } = await supabase
+      .from("branches")
+      .update({
+        address: direccion,
+        phone: telefono,
+        city: ciudad,
+      })
+      .eq("id", sucursalId);
 
-    try {
-        const query = `
-            UPDATE SUCURSALES
-            SET DIRECCION = :direccion, TELEFONO = :telefono, 
-                CORREO_CONTACTO = :correoContacto, CIUDAD = :ciudad
-            WHERE SUCURSAL_ID = :empresaIdNum
-        `;
+    if (error) throw error;
 
-        // Asegúrate de que el array incluye exactamente 7 parámetros en el orden correcto
-        const result = await executeQuery(query, [direccion, telefono, correoContacto, ciudad, empresaIdNum]);
-
-        if (result.affectedRows === 0) {
-            return NextResponse.json({ message: 'Sucursal no encontrada' }, { status: 404 });
-        }
-
-        return NextResponse.json({ message: 'Sucursal actualizada exitosamente' }, { status: 200 });
-    } catch (error) {
-        console.error("Error al actualizar la sucursal:", error);
-        return NextResponse.json({ message: 'Error al actualizar la sucursal', error: error.message }, { status: 500 });
-    }
+    return NextResponse.json({ message: "Sucursal actualizada exitosamente" });
+  } catch (error) {
+    console.error("Error al actualizar la sucursal:", error);
+    return NextResponse.json(
+      { message: "Error al actualizar la sucursal", error: error.message },
+      { status: 500 },
+    );
+  }
 }
 
 // Eliminar una sucursal
 export async function DELETE(req) {
-    const { empresaId } = await req.json();
+  const { empresaId } = await req.json();
+  // NOTA FRONTEND: El prop se llama empresaId pero contiene el ID de la SUCURSAL a borrar
+  const sucursalId = parseInt(empresaId);
 
-    const empresaIdNum = parseInt(empresaId);
+  try {
+    const { error } = await supabase
+      .from("branches")
+      .delete()
+      .eq("id", sucursalId);
 
-    try {
-        const query = `
-            DELETE FROM SUCURSALES
-            WHERE EMPRESA_ID = :empresaIdNum
-        `;
-        const result = await executeQuery(query, [empresaIdNum]);
+    if (error) throw error;
 
-        if (result.affectedRows === 0) {
-            return new Response('Sucursal no encontrada', { status: 404 });
-        }
-
-        return new Response('Sucursal eliminada exitosamente', { status: 200 });
-    } catch (error) {
-        console.error("Error al eliminar la sucursal:", error);
-        return new Response('Error al eliminar la sucursal', { status: 500 });
-    }
+    return new Response("Sucursal eliminada exitosamente", { status: 200 });
+  } catch (error) {
+    console.error("Error al eliminar la sucursal:", error);
+    return new Response("Error al eliminar la sucursal", { status: 500 });
+  }
 }

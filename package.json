@@ -9,10 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@azure/app-configuration": "^1.8.0",
-    "@azure/identity": "^4.5.0",
-    "@azure/keyvault-secrets": "^4.9.0",
-    "@azure/storage-blob": "^12.25.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.91.0",
     "@types/bcrypt": "^5.0.1",
     "@types/node": "^20.8.9",
     "@types/react": "^18.2.32",
@@ -25,10 +23,6 @@
     "framer-motion": "^10.12.16",
     "next": "^13.5.6",
     "next-themes": "^0.2.1",
-    "oci-common": "^2.98.0",
-    "oci-objectstorage": "^2.98.0",
-    "oci-secrets": "^2.98.0",
-    "oracledb": "^6.6.0",
     "postcss": "^8.4.31",
     "prettier": "^3.0.3",
     "prettier-plugin-tailwindcss": "^0.5.6",

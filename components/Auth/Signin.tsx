@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 const Signin = () => {
   const [data, setData] = useState({
@@ -11,53 +13,96 @@ const Signin = () => {
   });
   const [error, setError] = useState(""); // Para manejar errores de inicio de sesión
 
+  const supabase = createClient();
+  const router = useRouter();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          cedula: data.id,
-          password: data.password,
-        }),
-      });
+    setError("");
 
-      if (response.ok) {
-        // Login exitoso, redirigir al panel de administración
+    // Supabase requiere email, aquí asumimos que "cedula" es el email o lo mapeamos.
+    // Para simplificar la migración inicial, usaremos un email construido con la cédula
+    // O pediremos al usuario que use email.
+    // ESTRATEGIA: El input dice "Cédula", pero Supabase usa email.
+    // Opción temporal: admin@pruebafobeso.com + password.
+
+    // Si queremos mantener login por Cédula, necesitaríamos una Edge Function,
+    // pero lo mejor es modernizar a Email.
+    const email = data.id.includes("@")
+      ? data.id
+      : `${data.id}@pruebafobeso.com`;
+
+    try {
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email,
+          password: data.password,
+        });
+
+      if (authError) {
+        if (authError.message.includes("Invalid login")) {
+          setError("Credenciales incorrectas");
+        } else {
+          setError(authError.message);
+        }
+        return;
+      }
+
+      if (authData.user) {
+        // Redirigir y refrescar para actualizar estado de sesión
         window.location.href = "/admin";
-      } else if (response.status === 401) {
-        // Credenciales incorrectas
-        setError("Cédula o contraseña incorrectas");
-      } else {
-        // Otro error
-        setError("Hubo un problema con el inicio de sesión. Intenta nuevamente.");
       }
     } catch (error) {
-      console.error("Error en el inicio de sesión:", error);
-      setError("Error al intentar iniciar sesión. Intenta nuevamente.");
+      console.error("Error inesperado:", error);
+      setError("Error de conexión. Intenta nuevamente.");
     }
   };
 
   return (
-    <section className="overflow-hidden pt-60 pb-20">
-      <div className="mx-auto max-w-c-1390 px-4 md:px-8 2xl:px-0 pb-5">
+    <section className="overflow-hidden pb-20 pt-60">
+      <div className="mx-auto max-w-c-1390 px-4 pb-5 md:px-8 2xl:px-0">
         <div className="flex lg:items-center xl:gap-10">
           <div className="animate_right hidden md:w-1/2 lg:block">
             <div className="relative 2xl:-mr-7.5">
-              <Image src="/images/shape/shape-01.png" alt="shape" width={46} height={246} className="absolute -left-11.5 top-0" />
-              <Image src="/images/shape/shape-02.svg" alt="shape" width={36.9} height={36.7} className="absolute bottom-0 right-0 z-10" />
-              <Image src="/images/shape/shape-03.svg" alt="shape" width={21.64} height={21.66} className="absolute -right-6.5 bottom-0 z-1" />
+              <Image
+                src="/images/shape/shape-01.png"
+                alt="shape"
+                width={46}
+                height={246}
+                className="absolute -left-11.5 top-0"
+              />
+              <Image
+                src="/images/shape/shape-02.svg"
+                alt="shape"
+                width={36.9}
+                height={36.7}
+                className="absolute bottom-0 right-0 z-10"
+              />
+              <Image
+                src="/images/shape/shape-03.svg"
+                alt="shape"
+                width={21.64}
+                height={21.66}
+                className="absolute -right-6.5 bottom-0 z-1"
+              />
               <div className="relative aspect-[700/444] w-full">
-                <Image className="shadow-solid-l dark:hidden" src="/images/hero/hero-light.svg" alt="Hero" fill />
-                <Image className="hidden shadow-solid-l dark:block" src="/images/hero/hero-dark.svg" alt="Hero" fill />
+                <Image
+                  className="shadow-solid-l dark:hidden"
+                  src="/images/hero/hero-light.svg"
+                  alt="Hero"
+                  fill
+                />
+                <Image
+                  className="hidden shadow-solid-l dark:block"
+                  src="/images/hero/hero-dark.svg"
+                  alt="Hero"
+                  fill
+                />
               </div>
             </div>
           </div>
 
-          <div className="w-full lg:w-1/2 flex items-center justify-center">
+          <div className="flex w-full items-center justify-center lg:w-1/2">
             <motion.div
               variants={{
                 hidden: { opacity: 0, y: -20 },
@@ -81,7 +126,7 @@ const Signin = () => {
               </div>
 
               <form onSubmit={handleSubmit}>
-                <div className="flex flex-col gap-7.5 mx-30 lg:mb-5 xl:mb-10">
+                <div className="mx-30 flex flex-col gap-7.5 lg:mb-5 xl:mb-10">
                   <input
                     type="text"
                     placeholder="Cédula"
@@ -96,17 +141,19 @@ const Signin = () => {
                     placeholder="Contraseña"
                     name="password"
                     value={data.password}
-                    onChange={(e) => setData({ ...data, password: e.target.value })}
+                    onChange={(e) =>
+                      setData({ ...data, password: e.target.value })
+                    }
                     className="w-full border-b border-stroke !bg-white focus:border-waterloo focus:placeholder:text-black focus-visible:outline-none dark:border-strokedark dark:!bg-black dark:focus:border-manatee dark:focus:placeholder:text-white"
                   />
                 </div>
 
-                {error && <p className="text-red-500 text-center">{error}</p>}
+                {error && <p className="text-center text-red-500">{error}</p>}
 
-                <div className="flex justify-center mt-2 mx-20 gap-6">
+                <div className="mx-20 mt-2 flex justify-center gap-6">
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-2.5 rounded-full bg-black px-6 py-3 mb-10 font-medium text-white duration-300 ease-in-out hover:bg-blackho dark:bg-primary dark:bg-opacity-75 dark:hover:bg-blackho"
+                    className="mb-10 inline-flex items-center gap-2.5 rounded-full bg-black px-6 py-3 font-medium text-white duration-300 ease-in-out hover:bg-blackho dark:bg-primary dark:bg-opacity-75 dark:hover:bg-blackho"
                   >
                     Iniciar Sesión
                     <svg
@@ -123,10 +170,8 @@ const Signin = () => {
                       />
                     </svg>
                   </button>
-                  <Link href='/'>
-                    <button
-                      className="inline-flex items-center gap-2.5 rounded-full bg-black px-6 py-3 mb-10 font-medium text-white duration-300 ease-in-out border border-white"
-                    >
+                  <Link href="/">
+                    <button className="mb-10 inline-flex items-center gap-2.5 rounded-full border border-white bg-black px-6 py-3 font-medium text-white duration-300 ease-in-out">
                       Cancelar
                     </button>
                   </Link>

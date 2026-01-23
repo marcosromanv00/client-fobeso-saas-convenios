@@ -1,54 +1,67 @@
-import { executeQuery } from '@/lib/db';
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic"; // Asegura que no se cachee estáticamente en build
 
 export async function GET() {
   try {
-    // Consulta para obtener todos los convenios junto con los datos de la empresa y sucursal.
-    const query = `
-      SELECT 
-        c.CONVENIO_ID, 
-        c.EMPRESA_ID, 
-        e.NOMBRE AS NOMBRE_EMP, 
-        e.LOGO_URL, 
-        s.DIRECCION, 
-        s.CIUDAD, 
-        s.TELEFONO, 
-        c.CATEGORIA_ID, 
-        cat.NOMBRE AS NOMBRE_CAT, 
-        c.TITULO, 
-        c.CONDICIONES
-      FROM CONVENIOS c
-      JOIN EMPRESAS e ON c.EMPRESA_ID = e.EMPRESA_ID
-      JOIN SUCURSALES s ON e.EMPRESA_ID = s.EMPRESA_ID
-      JOIN CATEGORIAS cat ON c.CATEGORIA_ID = cat.CATEGORIA_ID
-      ORDER BY 
-        c.FECHA_INICIO DESC
-      FETCH FIRST 6 ROWS ONLY
-    `;
+    // Consulta a Supabase
+    const { data: deals, error } = await supabase
+      .from("deals")
+      .select(
+        `
+        id,
+        title,
+        conditions,
+        created_at,
+        companies:company_id (
+          id,
+          name,
+          logo_url,
+          branches (
+            address,
+            city,
+            phone
+          )
+        ),
+        categories:category_id (
+          id,
+          name
+        )
+      `,
+      )
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(6);
 
-    const result = await executeQuery(query);
+    if (error) {
+      console.error("Supabase Error:", error);
+      throw error;
+    }
 
-    // Asegúrate de acceder a `rows` del resultado
-    const convenios = result.rows || [];  // Default to empty array if no rows
+    // Mapeo para mantener compatibilidad con el frontend actual
+    const formattedConvenios = deals.map((deal) => {
+      // Tomamos la primera sucursal disponible para mostrar dirección (igual que lógica anterior implícita)
+      const firstBranch = deal.companies?.branches?.[0] || {};
 
-    // Formateamos los resultados en la estructura de la tarjeta de convenio
-    const formattedConvenios = convenios.map((convenio) => ({
-      convenio_id: convenio.CONVENIO_ID,
-      empresa_id: convenio.EMPRESA_ID,
-      nombre_emp: convenio.NOMBRE_EMP,
-      logo_url: convenio.LOGO_URL,
-      direccion: convenio.DIRECCION,
-      ciudad: convenio.CIUDAD,
-      categoria_id: convenio.CATEGORIA_ID,
-      nombre_cat: convenio.NOMBRE_CAT,
-      titulo: convenio.TITULO,
-      condiciones: convenio.CONDICIONES,
-    }));
-
-    return new Response(JSON.stringify(formattedConvenios), {
-      headers: { 'Content-Type': 'application/json' },
+      return {
+        convenio_id: deal.id,
+        empresa_id: deal.companies?.id,
+        nombre_emp: deal.companies?.name,
+        logo_url: deal.companies?.logo_url,
+        direccion: firstBranch.address || "Dirección no disponible",
+        ciudad: firstBranch.city || "",
+        telefono: firstBranch.phone || "",
+        categoria_id: deal.categories?.id,
+        nombre_cat: deal.categories?.name,
+        titulo: deal.title,
+        condiciones: deal.conditions,
+      };
     });
+
+    return NextResponse.json(formattedConvenios);
   } catch (error) {
-    console.error("Error al obtener los convenios:", error);
-    return new Response('Error al obtener los convenios', { status: 500 });
+    console.error("Error al obtener los convenios recientes:", error);
+    return new Response("Error al obtener los convenios", { status: 500 });
   }
 }
