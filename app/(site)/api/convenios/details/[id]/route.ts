@@ -1,50 +1,81 @@
-import { executeQuery } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export const dynamic = "force-dynamic";
+
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
   const { id } = params;
 
   try {
-    // Consulta para obtener el convenio, empresa, y sucursal asociados al ID
-    const query = `
-    SELECT 
-      c.TITULO, 
-      c.FECHA_INICIO, 
-      c.FECHA_FIN, 
-      c.CONDICIONES, 
-      COALESCE(e.NOMBRE, '') AS EMPRESA_NOMBRE, 
-      COALESCE(e.LOGO_URL, '') AS LOGO_URL, 
-      COALESCE(e.SITIO_WEB, '') AS SITIO_WEB, 
-      COALESCE(e.FACEBOOK, '') AS FACEBOOK, 
-      COALESCE(e.INSTAGRAM, '') AS INSTAGRAM, 
-      COALESCE(e.TWITTER, '') AS TWITTER, 
-      COALESCE(e.LINKEDIN, '') AS LINKEDIN, 
-      COALESCE(e.ESTADO, 0) AS EMPRESA_ESTADO, 
-      COALESCE(s.DIRECCION, '') AS DIRECCION, 
-      COALESCE(s.TELEFONO, '') AS TELEFONO, 
-      COALESCE(s.CORREO_CONTACTO, '') AS CORREO_CONTACTO, 
-      COALESCE(s.CIUDAD, '') AS CIUDAD, 
-      COALESCE(s.ESTADO, 0) AS SUCURSAL_ESTADO
-    FROM CONVENIOS c
-    JOIN EMPRESAS e ON c.EMPRESA_ID = e.EMPRESA_ID
-    LEFT JOIN SUCURSALES s ON e.EMPRESA_ID = s.EMPRESA_ID
-    WHERE c.CONVENIO_ID = :id
-  `;
+    const { data: deals, error } = await supabase
+      .from("deals")
+      .select(
+        `
+        title,
+        start_date,
+        end_date,
+        conditions,
+        companies (
+          name,
+          logo_url,
+          website,
+          is_active,
+          branches (
+            address,
+            phone,
+            city
+          )
+        )
+      `,
+      )
+      .eq("company_id", id)
+      .limit(1);
 
-    // Llamamos a executeQuery, que devuelve un objeto con 'rows' y 'outBinds'
-    const result = await executeQuery(query, [id]);
+    if (error) {
+      throw error;
+    }
 
-    // Verificamos si hay resultados
-    if (result.rows.length === 0) {
+    if (!deals || deals.length === 0) {
       return new Response("Convenio no encontrado", { status: 404 });
     }
 
-    // Devolvemos el primer resultado de las filas
-    return new Response(JSON.stringify(result.rows[0]), {
+    const deal = deals[0];
+    const company = (
+      Array.isArray(deal.companies) ? deal.companies[0] : deal.companies
+    ) as any;
+    const branches = company?.branches || [];
+    const branch = (branches.length > 0 ? branches[0] : {}) as any;
+
+    const formattedDetail = {
+      TITULO: deal.title,
+      FECHA_INICIO: deal.start_date,
+      FECHA_FIN: deal.end_date,
+      CONDICIONES: deal.conditions,
+      EMPRESA_NOMBRE: company?.name || "",
+      LOGO_URL: company?.logo_url || "",
+      SITIO_WEB: company?.website || "",
+      FACEBOOK: "",
+      INSTAGRAM: "",
+      TWITTER: "",
+      LINKEDIN: "",
+      EMPRESA_ESTADO: company?.is_active ? 1 : 0,
+      DIRECCION: branch.address || "",
+      TELEFONO: branch.phone || "",
+      CORREO_CONTACTO: "",
+      CIUDAD: branch.city || "",
+      SUCURSAL_ESTADO: 1,
+    };
+
+    return new Response(JSON.stringify(formattedDetail), {
       headers: { "Content-Type": "application/json" },
     });
-
   } catch (error) {
     console.error("Error fetching convenio details", error);
-    return new Response("Error al obtener los detalles del convenio", { status: 500 });
+    return new Response("Error al obtener los detalles del convenio", {
+      status: 500,
+    });
   }
 }

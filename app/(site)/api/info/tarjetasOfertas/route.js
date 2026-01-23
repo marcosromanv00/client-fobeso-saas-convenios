@@ -1,54 +1,73 @@
-import { executeQuery } from '@/lib/db';
+import { supabase } from "@/lib/supabase";
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const query = `
-      SELECT 
-        o.OFERTA_ID, 
-        o.CONVENIO_ID, 
-        e.NOMBRE AS NOMBRE_EMP, 
-        e.LOGO_URL, 
-        s.DIRECCION, 
-        s.CIUDAD, 
-        s.TELEFONO, 
-        o.CATEGORIA_ID, 
-        cat.NOMBRE AS NOMBRE_CAT, 
-        o.TITULO, 
-        o.CONDICIONES
-      FROM OFERTAS o
-      JOIN EMPRESAS e ON o.CONVENIO_ID = e.EMPRESA_ID
-      JOIN SUCURSALES s ON e.EMPRESA_ID = s.EMPRESA_ID
-      JOIN CATEGORIAS cat ON o.CATEGORIA_ID = cat.CATEGORIA_ID
-    `;
-    
-    // Ejecutar la consulta utilizando executeQuery
-    const { rows } = await executeQuery(query); // Obtener solo las filas de la consulta
-    
-    // Verificar si se obtuvieron convenios
-    if (!rows || rows.length === 0) {
-      return new Response('No se encontraron convenios', { status: 404 });
+    const { data: deals, error } = await supabase
+      .from("deals")
+      .select(
+        `
+        id,
+        company_id,
+        category_id,
+        title,
+        conditions,
+        created_at,
+        companies (
+          id,
+          name,
+          logo_url,
+          branches (
+            address,
+            city,
+            phone
+          )
+        ),
+        categories (
+          id,
+          name
+        )
+      `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw error;
     }
 
-    // Formateamos los resultados en la estructura deseada
-    const formattedConvenios = rows.map((convenio) => ({
-      convenio_id: convenio.CONVENIO_ID,
-      empresa_id: convenio.EMPRESA_ID,
-      nombre_emp: convenio.NOMBRE_EMP,
-      logo_url: convenio.LOGO_URL,
-      direccion: convenio.DIRECCION,
-      ciudad: convenio.CIUDAD,
-      categoria_id: convenio.CATEGORIA_ID,
-      nombre_cat: convenio.NOMBRE_CAT,
-      titulo: convenio.TITULO,
-      condiciones: convenio.CONDICIONES,
-    }));
+    if (!deals || deals.length === 0) {
+      return new Response("No se encontraron convenios", { status: 404 });
+    }
 
-    // Retornar la respuesta formateada como JSON
-    return new Response(JSON.stringify(formattedConvenios), {
-      headers: { 'Content-Type': 'application/json' },
+    const formattedConvenios = deals.map((deal) => {
+      const company = Array.isArray(deal.companies)
+        ? deal.companies[0]
+        : deal.companies;
+      const category = Array.isArray(deal.categories)
+        ? deal.categories[0]
+        : deal.categories;
+      const branches = company?.branches || [];
+      const branch = branches.length > 0 ? branches[0] : {};
+
+      return {
+        convenio_id: deal.company_id,
+        empresa_id: deal.company_id,
+        nombre_emp: company?.name,
+        logo_url: company?.logo_url,
+        direccion: branch.address || null,
+        ciudad: branch.city || null,
+        categoria_id: deal.category_id,
+        nombre_cat: category?.name,
+        titulo: deal.title,
+        condiciones: deal.conditions,
+      };
     });
+
+    return NextResponse.json(formattedConvenios);
   } catch (error) {
     console.error("Error al obtener los convenios:", error);
-    return new Response('Error al obtener los convenios', { status: 500 });
+    return new Response("Error al obtener los convenios", { status: 500 });
   }
 }
