@@ -208,10 +208,15 @@ const CrearConvenio = ({ onClose }: { onClose: () => void }) => {
         const response = await fetch("/api/convenios/categorias");
         const data = await response.json();
         console.log("Categorías obtenidas:", data); // Verifica los datos aquí
-        if (data.rows && Array.isArray(data.rows)) {
-          setCategorias(data.rows); // Accede a la propiedad rows
+        if (Array.isArray(data)) {
+          setCategorias(data);
+        } else if (data.rows && Array.isArray(data.rows)) {
+          setCategorias(data.rows);
         } else {
-          console.error("La respuesta no contiene un array de categorías");
+          console.error(
+            "La respuesta no contiene un array de categorías",
+            data,
+          );
         }
       } catch (error) {
         console.error("Error al obtener categorías:", error);
