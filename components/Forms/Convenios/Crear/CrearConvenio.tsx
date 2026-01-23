@@ -265,7 +265,7 @@ const CrearConvenio = ({ onClose }: { onClose: () => void }) => {
             <div className="mb-5 flex flex-col gap-7.5 lg:flex-row lg:gap-8">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-300 dark:text-gray-800">
-                  Nombre de la empresa
+                  Nombre de la empresa <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -392,7 +392,7 @@ const CrearConvenio = ({ onClose }: { onClose: () => void }) => {
             <div className="mb-5 flex flex-col gap-7.5 lg:flex-row lg:gap-8">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-300 dark:text-gray-800">
-                  Categoría
+                  Categoría <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="categoria_id"
@@ -414,7 +414,7 @@ const CrearConvenio = ({ onClose }: { onClose: () => void }) => {
 
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-300 dark:text-gray-800">
-                  Título del Convenio
+                  Título del Convenio <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -482,7 +482,7 @@ const CrearConvenio = ({ onClose }: { onClose: () => void }) => {
             <div className="mb-5 flex flex-col gap-7.5 lg:flex-row lg:gap-8">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-300 dark:text-gray-800">
-                  Dirección
+                  Dirección <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"

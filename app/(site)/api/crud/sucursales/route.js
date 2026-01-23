@@ -1,7 +1,14 @@
 import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+// Cliente Supabase con privilegios de administrador (Service Role) para bypass de RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 const mapBranchToLegacy = (branch) => ({
   SUCURSAL_ID: branch.id,
@@ -9,7 +16,7 @@ const mapBranchToLegacy = (branch) => ({
   DIRECCION: branch.address,
   TELEFONO: branch.phone,
   CIUDAD: branch.city,
-  CORREO_CONTACTO: branch.contact_email, // Campo nuevo si la tabla branches no lo tiene, se ignora
+  CORREO_CONTACTO: branch.contact_email,
   ESTADO: 1,
 });
 
@@ -38,7 +45,7 @@ export async function POST(req) {
     await req.json();
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("branches")
       .insert([
         {
@@ -46,7 +53,7 @@ export async function POST(req) {
           address: direccion,
           phone: telefono,
           city: ciudad,
-          // contact_email: correoContacto // Habilitar si la tabla branches tiene email
+          contact_email: correoContacto,
         },
       ])
       .select()
@@ -75,12 +82,13 @@ export async function PUT(req) {
   const sucursalId = parseInt(empresaId);
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("branches")
       .update({
         address: direccion,
         phone: telefono,
         city: ciudad,
+        contact_email: correoContacto,
       })
       .eq("id", sucursalId);
 
@@ -103,7 +111,7 @@ export async function DELETE(req) {
   const sucursalId = parseInt(empresaId);
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("branches")
       .delete()
       .eq("id", sucursalId);

@@ -1,7 +1,14 @@
 import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+// Cliente Supabase con privilegios de administrador (Service Role) para bypass de RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 // Mapeo auxiliar de nombres de campos Database -> Frontend Legacy
 const mapDealToLegacy = (deal) => ({
@@ -62,7 +69,7 @@ export async function POST(req) {
       return new Response("Faltan datos requeridos", { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("deals")
       .insert([
         {
@@ -105,7 +112,7 @@ export async function PUT(req) {
 
     const dealId = parseInt(empresaId); // ID del convenio realmente
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("deals")
       .update({
         category_id: parseInt(categoriaId),
@@ -135,7 +142,10 @@ export async function DELETE(req) {
     const dealId = parseInt(empresaId);
 
     // FIX CRÍTICO: Borramos por ID de convenio, no por ID de empresa.
-    const { error } = await supabase.from("deals").delete().eq("id", dealId);
+    const { error } = await supabaseAdmin
+      .from("deals")
+      .delete()
+      .eq("id", dealId);
 
     if (error) throw error;
 
