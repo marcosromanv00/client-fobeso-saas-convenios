@@ -1,7 +1,15 @@
 import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+// Cliente Supabase con privilegios de administrador (Service Role) para bypass de RLS
+// Útil para operaciones de backend donde confiamos en la lógica de la API
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 // Mapeo auxiliar de nombres de campos Database -> Frontend Legacy
 const mapCompanyToLegacy = (company) => ({
@@ -9,7 +17,7 @@ const mapCompanyToLegacy = (company) => ({
   NOMBRE: company.name,
   LOGO_URL: company.logo_url,
   SITIO_WEB: company.website,
-  FACEBOOK: company?.facebook, // Asumiendo que agregaremos redes sociales a la tabla 'companies'
+  FACEBOOK: company?.facebook,
   INSTAGRAM: company?.instagram,
   TWITTER: company?.twitter,
   LINKEDIN: company?.linkedin,
@@ -50,16 +58,18 @@ export async function POST(req) {
       linkedin,
     } = body;
 
-    const { data, error } = await supabase
+    // Usamos supabaseAdmin para insertar, ignorando RLS
+    const { data, error } = await supabaseAdmin
       .from("companies")
       .insert([
         {
           name: nombre,
           logo_url: logoUrl,
           website: sitio_web,
-          // Nota: Redes sociales no están en la definición SQL original mínima,
-          // pero si existen en Supabase se pueden insertar. Si no, se ignoran o se agregan en JSONB.
-          // Por ahora asumo que solo name y logo_url son críticos.
+          facebook: facebook,
+          instagram: instagram,
+          twitter: twitter,
+          linkedin: linkedin,
           is_active: true,
         },
       ])
@@ -109,12 +119,17 @@ export async function PUT(req) {
       );
     }
 
-    const { error } = await supabase
+    // Usamos supabaseAdmin para actualizar
+    const { error } = await supabaseAdmin
       .from("companies")
       .update({
         name: empresaNombre.trim(),
         logo_url: logoUrl,
         website: sitio_web,
+        facebook: facebook,
+        instagram: instagram,
+        twitter: twitter,
+        linkedin: linkedin,
       })
       .eq("id", empresaIdNum);
 
@@ -136,7 +151,8 @@ export async function DELETE(req) {
     const { empresaId } = await req.json();
     const empresaIdNum = parseInt(empresaId);
 
-    const { error } = await supabase
+    // Usamos supabaseAdmin para eliminar
+    const { error } = await supabaseAdmin
       .from("companies")
       .delete()
       .eq("id", empresaIdNum);
