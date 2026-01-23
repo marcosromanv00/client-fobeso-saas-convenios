@@ -11,7 +11,24 @@ const nextConfig = {
         hostname: "cdn.sanity.io",
         port: "",
       },
+      {
+        protocol: "https",
+        hostname: "upload.wikimedia.org",
+        port: "",
+      },
+      {
+        protocol: "https",
+        hostname: "placehold.co",
+        port: "",
+      },
+      {
+        protocol: "https",
+        hostname: "ccfyuybdkrunzidptxou.supabase.co",
+        port: "",
+      },
     ],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
 };
 
