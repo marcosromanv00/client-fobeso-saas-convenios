@@ -72,14 +72,14 @@ const menuData: Menu[] = [
     newTab: false,
     path: "/#faq",
     public: true,
-  },  /*
+  } /*
   {
     id: 12,
     title: "Contacto",
     newTab: false,
     path: "/#contact",
     public: true,
-  },*/
+  },*/,
 ];
 
 export default menuData;
