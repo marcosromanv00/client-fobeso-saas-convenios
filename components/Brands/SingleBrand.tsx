@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 const SingleBrand = ({ empresa }: { empresa: Empresa }) => {
   const { logo_url, nombre, empresa_id } = empresa;
+  const [imgError, setImgError] = React.useState(false);
 
   // Obtener la ruta actual
   const pathUrl = usePathname();
@@ -26,28 +27,30 @@ const SingleBrand = ({ empresa }: { empresa: Empresa }) => {
       transition={{ duration: 1, delay: 0.5 }}
       viewport={{ once: true }}
       href={href}
-      className="animate_top mx-w-full relative flex h-[100px] w-[178px] overflow-hidden items-center justify-center"
+      className="animate_top mx-w-full relative flex h-[100px] w-[178px] items-center justify-center p-4"
     >
-      {/* Logo de la empresa */}
-      {logo_url ? (<Image
-        src={logo_url}
-        alt={nombre}
-        width={178}
-        height={100}
-        className="opacity-65 transition-all duration-300 hover:opacity-100 dark:hidden rounded-t-lg object-contain"
-      />) : (<div className="flex items-center justify-center h-full bg-gray-200 dark:bg-gray-700 text-gray-500">
-        Imagen no disponible
-      </div>)}
-      {logo_url ? (
-        <Image
-          src={logo_url}
-          alt={nombre}
-          width={178}
-          height={100}
-          className="hidden opacity-50 transition-all duration-300 hover:opacity-100 dark:block rounded-t-lg object-contain"
-        />) : (<div className="flex items-center justify-center h-full bg-gray-200 dark:bg-gray-700 text-gray-500">
-          Imagen no disponible
-        </div>)}
+      {logo_url && !imgError ? (
+        <>
+          <Image
+            src={logo_url}
+            alt={nombre}
+            fill
+            className="object-contain opacity-65 transition-all duration-300 hover:opacity-100 dark:hidden"
+            onError={() => setImgError(true)}
+          />
+          <Image
+            src={logo_url}
+            alt={nombre}
+            fill
+            className="hidden object-contain opacity-50 transition-all duration-300 hover:opacity-100 dark:block"
+            onError={() => setImgError(true)}
+          />
+        </>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center rounded-md bg-gray-200 p-2 text-center text-sm font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+          {nombre}
+        </div>
+      )}
     </motion.a>
   );
 };
